@@ -1,0 +1,80 @@
+services:
+  configserver:
+    image: "albertoesteva88/configserver:s6"
+    container_name: "configserver-ms"
+    ports:
+      - "8071:8071"
+    # Util en docker swarm, pero estamos con docker compose  
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: "700m"
+    mem_limit: 700m
+    networks:
+      - eazybank
+  accounts:
+    image: "albertoesteva88/accounts:s6"
+    container_name: "accounts-ms"
+    ports:
+      - "8080:8080"
+    # Util en docker swarm, pero estamos con docker compose  
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: "700m"
+    mem_limit: 700m
+    networks:
+      - eazybank
+    environment:
+      - SPRING_APPLICATION_NAME=accounts
+# Cuando usas SPRING_CONFIG_IMPORT para conectarte al Config Server,
+# Spring necesita conocer el nombre de la aplicación lo antes posible 
+# — incluso antes de cargar el YAML del microservicio.
+# Por lo que tambien lo agregamos como variable de entorno en este caso
+      - "SPRING_CONFIG_IMPORT=configserver:http://configserver:8071"
+      - SPRING_PROFILES_ACTIVE=default
+  loans:
+    image: "albertoesteva88/loans:s6"
+    container_name: "loans-ms"
+    ports:
+      - "8090:8090"
+    # Util en docker swarm, pero estamos con docker compose  
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: "700m"
+    mem_limit: 700m    
+    networks:
+      - eazybank     
+    environment:
+      - SPRING_APPLICATION_NAME=loans
+# Cuando usas SPRING_CONFIG_IMPORT para conectarte al Config Server,
+# Spring necesita conocer el nombre de la aplicación lo antes posible 
+# — incluso antes de cargar el YAML del microservicio.
+# Por lo que tambien lo agregamos como variable de entorno en este caso
+      - "SPRING_CONFIG_IMPORT=configserver:http://configserver:8071"
+      - SPRING_PROFILES_ACTIVE=default         
+  cards:
+    image: "albertoesteva88/cards:s6"
+    container_name: "cards-ms"
+    ports:
+      - "9000:9000"
+    # Util en docker swarm, pero estamos con docker compose  
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: "700m"
+    mem_limit: 700m
+    networks:
+      - eazybank
+    environment:
+      - SPRING_APPLICATION_NAME=cards
+# Cuando usas SPRING_CONFIG_IMPORT para conectarte al Config Server,
+# Spring necesita conocer el nombre de la aplicación lo antes posible 
+# — incluso antes de cargar el YAML del microservicio.
+# Por lo que tambien lo agregamos como variable de entorno en este caso
+      - "SPRING_CONFIG_IMPORT=configserver:http://configserver:8071"
+      - SPRING_PROFILES_ACTIVE=default
+networks:
+  eazybank:
+    driver: "bridge"
