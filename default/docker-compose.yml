@@ -1,18 +1,35 @@
+# La definicion de la version es obligatoria para el reconocimiento de la sintaxis,
+# en el caso especifico de las anclas, en vscode de no tenerla marca duplicacion de claves
+# aunque no exista tal duplicacion
+version: "3.9"
+x-common-memory: &mem-limit
+  deploy:
+    resources:
+      limits:
+        memory: 700m
+
+x-spring-env: &spring-env
+  SPRING_PROFILES_ACTIVE: default
+  SPRING_CONFIG_IMPORT: configserver:http://configserver:8071
+
+x-common-net: &network
+  networks:
+    - eazybank
+
 services:
   rabbit:
     image: rabbitmq:3.12-management
     hostname: rabbitmq
     ports:
-      - 5672:5672
-      - 15672:15672
+      - "5672:5672"
+      - "15672:15672"
     healthcheck:
       test: rabbitmq-diagnostics check_port_connectivity
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 10s
-    networks:
-      - eazybank
+    <<: *network
   configserver:
     image: "albertoesteva88/configserver:s6"
     container_name: "configserver-ms"
@@ -27,14 +44,9 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
-    # Util en docker swarm, pero estamos con docker compose
-    # deploy:
-    #   resources:
-    #     limits:
-    #       memory: "700m"
-    mem_limit: 700m
-    networks:
-      - eazybank
+    <<:
+      - *mem-limit
+      - *network
   accounts:
     image: "albertoesteva88/accounts:s6"
     container_name: "accounts-ms"
@@ -43,22 +55,16 @@ services:
     depends_on:
       configserver:
         condition: service_healthy
-    # Util en docker swarm, pero estamos con docker compose
-    # deploy:
-    #   resources:
-    #     limits:
-    #       memory: "700m"
-    mem_limit: 700m
-    networks:
-      - eazybank
+    <<:
+      - *mem-limit
+      - *network
     environment:
-      - SPRING_APPLICATION_NAME=accounts
 # Cuando usas SPRING_CONFIG_IMPORT para conectarte al Config Server,
 # Spring necesita conocer el nombre de la aplicación lo antes posible
-# — incluso antes de cargar el YAML del microservicio.
-# Por lo que tambien lo agregamos como variable de entorno en este caso
-      - "SPRING_CONFIG_IMPORT=configserver:http://configserver:8071"
-      - SPRING_PROFILES_ACTIVE=default
+# incluso antes de cargar el YAML del microservicio.
+# Por lo que tambien lo agregamos como variable de entorno
+      SPRING_APPLICATION_NAME: accounts
+      <<: *spring-env
   loans:
     image: "albertoesteva88/loans:s6"
     container_name: "loans-ms"
@@ -67,22 +73,12 @@ services:
     depends_on:
       configserver:
         condition: service_healthy
-    # Util en docker swarm, pero estamos con docker compose
-    # deploy:
-    #   resources:
-    #     limits:
-    #       memory: "700m"
-    mem_limit: 700m
-    networks:
-      - eazybank
+    <<:
+      - *mem-limit
+      - *network
     environment:
-      - SPRING_APPLICATION_NAME=loans
-# Cuando usas SPRING_CONFIG_IMPORT para conectarte al Config Server,
-# Spring necesita conocer el nombre de la aplicación lo antes posible
-# — incluso antes de cargar el YAML del microservicio.
-# Por lo que tambien lo agregamos como variable de entorno en este caso
-      - "SPRING_CONFIG_IMPORT=configserver:http://configserver:8071"
-      - SPRING_PROFILES_ACTIVE=default
+      SPRING_APPLICATION_NAME: loans
+      <<: *spring-env
   cards:
     image: "albertoesteva88/cards:s6"
     container_name: "cards-ms"
@@ -91,22 +87,12 @@ services:
     depends_on:
       configserver:
         condition: service_healthy
-    # Util en docker swarm, pero estamos con docker compose
-    # deploy:
-    #   resources:
-    #     limits:
-    #       memory: "700m"
-    mem_limit: 700m
-    networks:
-      - eazybank
+    <<:
+      - *mem-limit
+      - *network
     environment:
-      - SPRING_APPLICATION_NAME=cards
-# Cuando usas SPRING_CONFIG_IMPORT para conectarte al Config Server,
-# Spring necesita conocer el nombre de la aplicación lo antes posible
-# — incluso antes de cargar el YAML del microservicio.
-# Por lo que tambien lo agregamos como variable de entorno en este caso
-      - "SPRING_CONFIG_IMPORT=configserver:http://configserver:8071"
-      - SPRING_PROFILES_ACTIVE=default
+      SPRING_APPLICATION_NAME: cards
+      <<: *spring-env
 networks:
   eazybank:
     driver: "bridge"
