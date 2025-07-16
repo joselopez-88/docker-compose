@@ -2,7 +2,7 @@
 # en el caso especifico de las anclas, en vscode de no tenerla marca duplicacion de claves
 # aunque no exista tal duplicacion
 version: "3.9"
-x-common-memory: &mem-limit
+x-common-base: &mem-limit
   deploy:
     resources:
       limits:
@@ -11,6 +11,7 @@ x-common-memory: &mem-limit
 x-spring-env: &spring-env
   SPRING_PROFILES_ACTIVE: default
   SPRING_CONFIG_IMPORT: configserver:http://configserver:8071
+  SPRING_RABBITMQ_HOST: "rabbit"
 
 x-common-net: &network
   networks:
@@ -47,6 +48,8 @@ services:
     <<:
       - *mem-limit
       - *network
+    environment:
+      SPRING_RABBITMQ_HOST: "rabbit"
   accounts:
     image: "albertoesteva88/accounts:s6"
     container_name: "accounts-ms"
