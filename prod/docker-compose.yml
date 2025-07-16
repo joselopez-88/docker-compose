@@ -1,25 +1,6 @@
-# La definicion de la version es obligatoria para el reconocimiento de la sintaxis,
-# en el caso especifico de las anclas, en vscode de no tenerla marca duplicacion de claves
-# aunque no exista tal duplicacion
-version: "3.9"
-x-common-base: &mem-limit
-  deploy:
-    resources:
-      limits:
-        memory: 700m
-
-x-spring-env: &spring-env
-  SPRING_PROFILES_ACTIVE: prod
-  SPRING_CONFIG_IMPORT: configserver:http://configserver:8071
-  SPRING_RABBITMQ_HOST: "rabbit"
-
-x-common-net: &network
-  networks:
-    - eazybank
-
 services:
   rabbit:
-    image: rabbitmq:3.12-management
+    image: rabbitmq:3.13-management
     hostname: rabbitmq
     ports:
       - "5672:5672"
@@ -29,73 +10,71 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 10s
-    <<: *network
+      start_period: 5s
+    extends:
+      file: common-config.yml
+      service: network-deploy-service
+
   configserver:
     image: "albertoesteva88/configserver:s6"
-    container_name: "configserver-ms"
+    container_name: configserver-ms
     ports:
       - "8071:8071"
     depends_on:
       rabbit:
         condition: service_healthy
     healthcheck:
-      test: "curl --fail --silent http://localhost:8071/actuator/health/readiness | grep UP || exit 1"
+      test: "curl --fail --silent localhost:8071/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 10s
-    <<:
-      - *mem-limit
-      - *network
-    environment:
-      SPRING_RABBITMQ_HOST: "rabbit"
+    extends:
+      file: common-config.yml
+      service: microservice-base-config
+
   accounts:
     image: "albertoesteva88/accounts:s6"
-    container_name: "accounts-ms"
+    container_name: accounts-ms
     ports:
       - "8080:8080"
     depends_on:
       configserver:
         condition: service_healthy
-    <<:
-      - *mem-limit
-      - *network
     environment:
-# Cuando usas SPRING_CONFIG_IMPORT para conectarte al Config Server,
-# Spring necesita conocer el nombre de la aplicación lo antes posible
-# incluso antes de cargar el YAML del microservicio.
-# Por lo que tambien lo agregamos como variable de entorno
-      SPRING_APPLICATION_NAME: accounts
-      <<: *spring-env
+      SPRING_APPLICATION_NAME: "accounts"
+    extends:
+      file: common-config.yml
+      service: microservice-configserver-config
+
   loans:
     image: "albertoesteva88/loans:s6"
-    container_name: "loans-ms"
+    container_name: loans-ms
     ports:
       - "8090:8090"
     depends_on:
       configserver:
         condition: service_healthy
-    <<:
-      - *mem-limit
-      - *network
     environment:
-      SPRING_APPLICATION_NAME: loans
-      <<: *spring-env
+      SPRING_APPLICATION_NAME: "loans"
+    extends:
+      file: common-config.yml
+      service: microservice-configserver-config
+
   cards:
     image: "albertoesteva88/cards:s6"
-    container_name: "cards-ms"
+    container_name: cards-ms
     ports:
       - "9000:9000"
     depends_on:
       configserver:
         condition: service_healthy
-    <<:
-      - *mem-limit
-      - *network
     environment:
-      SPRING_APPLICATION_NAME: cards
-      <<: *spring-env
+      SPRING_APPLICATION_NAME: "cards"
+    extends:
+      file: common-config.yml
+      service: microservice-configserver-config
+
 networks:
   eazybank:
     driver: "bridge"
