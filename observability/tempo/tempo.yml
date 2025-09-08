@@ -1,0 +1,64 @@
+server:
+# Abre el servidor HTTP interno de Tempo en el puerto 3100
+# No es el puerto para recibir trazas; es para observabilidad y salud del propio Tempo
+  http_listen_port: 3100
+
+# distributor (recepción de trazas)
+# Habilita el receiver OTLP (el protocolo de OpenTelemetry)
+# gRPC -> por defecto escucha en 4317
+# HTTP -> por defecto escucha en 4318
+# El distributor es la puerta de entrada; 
+# recibe spans y los enruta a los ingesters según el traceID.
+# Dado que en el archivo common-config pongo 
+#OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4318", conecta con el receiver HTTP que activas aquí.
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+        http:
+
+# ingester (empaquetado y escritura)
+# El ingester agrega spans en memoria y decide cuándo 
+# “cerrar” un bloque y escribirlo a almacenamiento.
+ingester:
+# Estos tres umbrales disparan el cierre del bloque:
+# Si una traza (mismo traceID) no recibe spans nuevos en 10 segundos,
+# se considera “inactiva” y se flushea al almacenamiento.
+  trace_idle_period: 10s
+# Si el bloque alcanza ~1 MB (tamaño del bloque en memoria), se cierra y escribe.  
+  max_block_bytes: 1_000_000
+# Aunque siga llegando tráfico, si han pasado 5 minutos desde que empezó 
+#a formarse el bloque, se cierra igualmente.  
+  max_block_duration: 5m
+
+# compactor (compactación y retención)
+# El compactor toma muchos bloques pequeños y los fusiona 
+#en bloques más grandes y eficientes para acelerar consultas y ahorrar espacio.
+compactor:
+  compaction:
+# Estos tres umbrales disparan la compactación:
+# Opera en ventanas de 1 hora: agrupa/compacta bloques que caen en el mismo intervalo temporal.
+    compaction_window: 1h
+# Límite de cuántos bloques/objetos puede considerar en una pasada de compactación.    
+    max_compaction_objects: 1000000
+# Tiempo de retención para bloques no compactados antes de ser elegibles para eliminación.    
+    block_retention: 1h
+# Una vez que un conjunto de bloques fue compactado en uno nuevo,
+# los bloques originales se mantienen 10 minutos antes de borrarlos.    
+    compacted_block_retention: 10m
+
+# storage (dónde y cómo se guardan los bloques)
+storage:
+  trace:
+# Tempo guardará los bloques en disco local (ideal para desarrollo o entornos de prueba).  
+    backend: local
+    local:
+# Directorio donde se escriben los bloques.    
+      path: /tmp/tempo/blocks
+    pool:
+# Número máximo de trabajadores concurrentes para operaciones
+# de E/S (subidas/borrados/lecturas).    
+      max_workers: 100
+# Tamaño de la cola de operaciones pendientes hacia el backend.      
+      queue_depth: 10000
