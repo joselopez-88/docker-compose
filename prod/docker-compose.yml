@@ -22,6 +22,7 @@ services:
       eazybank:
         aliases:
           - loki
+
 # Gestiona la ingesta y escritura de logs en el almacenamiento persistente (Minio). 
 #Recibe los logs enviados por agentes como Promtail o Alloy y los escribe en el backend.
 # Usa el comando -target=write para especializarse en operaciones de escritura.
@@ -61,6 +62,7 @@ services:
     extends:
       file: common-config.yml
       service: network-deploy-service
+
 # Proporciona almacenamiento persistente para Loki utilizando el protocolo S3.
 # Inicializa directorios para datos de Loki (loki-data) y reglas (loki-ruler).
 # Usa el comando -target=storage para especializarse en operaciones de almacenamiento
@@ -90,6 +92,7 @@ services:
     extends:
       file: common-config.yml
       service: network-deploy-service
+
 # Monitorea y recopila métricas de sistemas y servicios.
 #Almacena estas métricas en una base de datos temporal y permite consultarlas.
 # Utiliza un archivo de configuración personalizado (prometheus.yml) para definir qué recursos monitorear.
@@ -104,6 +107,20 @@ services:
     extends:
       file: common-config.yml
       service: network-deploy-service
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: tempo
+    command: -config.file /etc/tempo-config.yml
+    ports:
+      - "3110:3100"
+      - "4318:4318"
+    volumes:
+      - ../observability/tempo/tempo.yml:/etc/tempo-config.yml
+    extends:
+      file: common-config.yml
+      service: network-deploy-service
+      
 #  Plataforma de visualización y dashboards que permite explorar los logs almacenados en Loki y las métricas de Prometheus.
 # Usa el comando -target=server para especializarse en operaciones de servidor
   grafana:
@@ -132,6 +149,7 @@ services:
     extends:
       file: common-config.yml
       service: network-deploy-service
+
 # Maneja las operaciones de backend de Loki, como la gestión de almacenamiento, índices y reglas.
 # Usa el comando -target=backend para especializarse en operaciones de backend
   backend:
@@ -147,6 +165,7 @@ services:
     extends:
       file: common-config.yml
       service: network-deploy-service
+
 # Actúa como un reverse proxy y punto de entrada único para todas las peticiones a Loki.
 #Enruta las solicitudes de escritura (push) al nodo write y las de lectura (consultas y tailing) al nodo read.
   gateway:
@@ -218,6 +237,7 @@ services:
     extends:
       file: common-config.yml
       service: network-deploy-service
+
 # --
   # redis:
   #   image: redis
@@ -230,6 +250,7 @@ services:
   #   extends:
   #     file: common-config.yml
   #     service: network-deploy-service
+  
   configserver:
     image: "albertoesteva88/configserver:s11"
     container_name: configserver-ms
@@ -244,6 +265,8 @@ services:
     extends:
       file: common-config.yml
       service: microservice-base-config
+    environment:
+      OTEL_SERVICE_NAME: "configserver"
 
   eurekaserver:
     image: "albertoesteva88/eurekaserver:s11"
@@ -261,6 +284,7 @@ services:
       service: microservice-configserver-config
     environment:
       SPRING_APPLICATION_NAME: "eurekaserver"
+      OTEL_SERVICE_NAME: "eurekaserver"
       
   accounts:
     image: "albertoesteva88/accounts:s11"
@@ -275,6 +299,7 @@ services:
       start_period: 20s      
     environment:
       SPRING_APPLICATION_NAME: "accounts"
+      OTEL_SERVICE_NAME: "accounts"
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config
@@ -292,6 +317,7 @@ services:
       start_period: 20s      
     environment:
       SPRING_APPLICATION_NAME: "loans"
+      OTEL_SERVICE_NAME: "loans"
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config
@@ -309,6 +335,7 @@ services:
       start_period: 20s      
     environment:
       SPRING_APPLICATION_NAME: "cards"
+      OTEL_SERVICE_NAME: "cards"
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config
@@ -329,6 +356,7 @@ services:
       #   condition: service_healthy        
     environment:
       SPRING_APPLICATION_NAME: "gatewayserver"
+      OTEL_SERVICE_NAME: "gatewayserver"
       # SPRING_DATA_REDIS_CONNECT-TIMEOUT: 2s
       # SPRING_DATA_REDIS_HOST: redis
       # SPRING_DATA_REDIS_PORT: 6379
