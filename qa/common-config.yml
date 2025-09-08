@@ -10,6 +10,21 @@ services:
       resources:
         limits:
           memory: 700m
+    environment:
+    # se está cargando el agente Java de OpenTelemetry, este agente intercepta 
+    #automáticamente las llamadas de la aplicación (HTTP, JDBC, gRPC, etc.) 
+    # para generar trazas sin modificar el código.
+      JAVA_TOOL_OPTIONS: "-javaagent:/app/libs/opentelemetry-javaagent-2.19.0.jar"
+      # Define el endpoint al que el agente de OpenTelemetry enviará los datos recolectados
+      # Usa el protocolo OTLP (OpenTelemetry Protocol).
+      # Aquí apunta al servicio tempo en el puerto 4318, que es el endpoint HTTP de OTLP.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4318"
+      # Controla si el agente exporta métricas
+      # Al poner none, estás diciendo: no exportar métricas.
+      OTEL_METRICS_EXPORTER: none
+      # Define si se exportan logs recolectados por el agente.
+      # Igual que con métricas, al poner none -> no se exportan logs.
+      OTEL_LOGS_EXPORTER: none
 
   microservice-configserver-config:
     extends:

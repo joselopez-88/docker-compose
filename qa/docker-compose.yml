@@ -1,15 +1,256 @@
 services:
-  redis:
-    image: redis
+# Servicios para Observabilidad
+#  Este contenedor se encarga de manejar las consultas de lectura (queries) sobre los logs almacenados en Loki.
+# Utiliza el comando -target=read para especializarse en operaciones de consulta.
+  read:
+    image: grafana/loki:latest
+    command: "-config.file=/etc/loki/config.yaml -target=read"
     ports:
-      - "6379:6379"
+      - 3101:3100
+      - 7946
+      - 9095
+    volumes:
+      - ../observability/loki/loki-config.yaml:/etc/loki/config.yaml
+    depends_on:
+      - minio
     healthcheck:
-      test: [ "CMD-SHELL", "redis-cli ping | grep PONG" ]
-      timeout: 10s
-      retries: 10
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: &loki-dns
+      eazybank:
+        aliases:
+          - loki
+
+# Gestiona la ingesta y escritura de logs en el almacenamiento persistente (Minio). 
+#Recibe los logs enviados por agentes como Promtail o Alloy y los escribe en el backend.
+# Usa el comando -target=write para especializarse en operaciones de escritura.
+  write:
+    image: grafana/loki:latest
+    command: "-config.file=/etc/loki/config.yaml -target=write"
+    ports:
+      - 3102:3100
+      - 7946
+      - 9095
+    volumes:
+      - ../observability/loki/loki-config.yaml:/etc/loki/config.yaml
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      - minio
+    networks:
+      <<: *loki-dns
+
+# Actúa como un agente de colección y procesamiento de telemetría (métricas, logs, trazas).
+# Monta el socket de Docker (/var/run/docker.sock) para recopilar logs de contenedores.
+# Utiliza un archivo de configuración personalizado (alloy-local-config.yaml) para definir fuentes y destinos de datos.
+# Usa el comando -target=agent para especializarse en operaciones de agente
+  alloy:
+    image: grafana/alloy:latest
+    volumes:
+      - ../observability/alloy/alloy-local-config.yaml:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:  run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+    ports:
+      - 12345:12345
+    depends_on:
+      - gateway
     extends:
       file: common-config.yml
       service: network-deploy-service
+
+# Proporciona almacenamiento persistente para Loki utilizando el protocolo S3.
+# Inicializa directorios para datos de Loki (loki-data) y reglas (loki-ruler).
+# Usa el comando -target=storage para especializarse en operaciones de almacenamiento
+  minio:
+    image: minio/minio
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /data/loki-data && \
+        mkdir -p /data/loki-ruler && \
+        minio server /data
+    environment:
+      - MINIO_ROOT_USER=loki
+      - MINIO_ROOT_PASSWORD=supersecret
+      - MINIO_PROMETHEUS_AUTH_TYPE=public
+      - MINIO_UPDATE=off
+    ports:
+      - 9000
+    volumes:
+      - ./.data/minio:/data
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 15s
+      timeout: 20s
+      retries: 5
+    extends:
+      file: common-config.yml
+      service: network-deploy-service
+
+# Monitorea y recopila métricas de sistemas y servicios.
+#Almacena estas métricas en una base de datos temporal y permite consultarlas.
+# Utiliza un archivo de configuración personalizado (prometheus.yml) para definir qué recursos monitorear.
+# Usa el comando -target=server para especializarse en operaciones de servidor
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    extends:
+      file: common-config.yml
+      service: network-deploy-service
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: tempo
+    command: -config.file /etc/tempo-config.yml
+    ports:
+      - "3110:3100"
+      - "4318:4318"
+    volumes:
+      - ../observability/tempo/tempo.yml:/etc/tempo-config.yml
+    extends:
+      file: common-config.yml
+      service: network-deploy-service
+
+#  Plataforma de visualización y dashboards que permite explorar los logs almacenados en Loki y las métricas de Prometheus.
+# Usa el comando -target=server para especializarse en operaciones de servidor
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    depends_on:
+      - gateway
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        /run.sh
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../observability/grafana/grafana-data:/var/lib/grafana  
+      - ../observability/grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    extends:
+      file: common-config.yml
+      service: network-deploy-service
+
+# Maneja las operaciones de backend de Loki, como la gestión de almacenamiento, índices y reglas.
+# Usa el comando -target=backend para especializarse en operaciones de backend
+  backend:
+    image: grafana/loki:latest
+    volumes:
+      - ../observability/loki/loki-config.yaml:/etc/loki/config.yaml
+    ports:
+      - "3100"
+      - "7946"
+    command: "-config.file=/etc/loki/config.yaml -target=backend -legacy-read-mode=false"
+    depends_on:
+      - gateway
+    extends:
+      file: common-config.yml
+      service: network-deploy-service
+
+# Actúa como un reverse proxy y punto de entrada único para todas las peticiones a Loki.
+#Enruta las solicitudes de escritura (push) al nodo write y las de lectura (consultas y tailing) al nodo read.
+  gateway:
+    image: nginx:latest
+    depends_on:
+      - read
+      - write
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        cat <<EOF > /etc/nginx/nginx.conf
+        user  nginx;
+        worker_processes  5;  ## Default: 1
+
+        events {
+          worker_connections   1000;
+        }
+
+        http {
+          resolver 127.0.0.11;
+
+          server {
+            listen             3100;
+
+            location = / {
+              return 200 'OK';
+              auth_basic off;
+            }
+
+            location = /api/prom/push {
+              proxy_pass       http://write:3100\$$request_uri;
+            }
+
+            location = /api/prom/tail {
+              proxy_pass       http://read:3100\$$request_uri;
+              proxy_set_header Upgrade \$$http_upgrade;
+              proxy_set_header Connection "upgrade";
+            }
+
+            location ~ /api/prom/.* {
+              proxy_pass       http://read:3100\$$request_uri;
+            }
+
+            location = /loki/api/v1/push {
+              proxy_pass       http://write:3100\$$request_uri;
+            }
+
+            location = /loki/api/v1/tail {
+              proxy_pass       http://read:3100\$$request_uri;
+              proxy_set_header Upgrade \$$http_upgrade;
+              proxy_set_header Connection "upgrade";
+            }
+
+            location ~ /loki/api/.* {
+              proxy_pass       http://read:3100\$$request_uri;
+            }
+          }
+        }
+        EOF
+        /docker-entrypoint.sh nginx -g "daemon off;"
+    ports:
+      - "3100:3100"
+    healthcheck:
+      test: ["CMD", "service", "nginx", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    extends:
+      file: common-config.yml
+      service: network-deploy-service
+
+# --
+  # redis:
+  #   image: redis
+  #   ports:
+  #     - "6379:6379"
+  #   healthcheck:
+  #     test: [ "CMD-SHELL", "redis-cli ping | grep PONG" ]
+  #     timeout: 10s
+  #     retries: 10
+  #   extends:
+  #     file: common-config.yml
+  #     service: network-deploy-service
+  
   configserver:
     image: "albertoesteva88/configserver:s11"
     container_name: configserver-ms
@@ -19,11 +260,13 @@ services:
       test: "curl --fail --silent localhost:8071/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 5
+      start_period: 60s
     extends:
       file: common-config.yml
       service: microservice-base-config
+    environment:
+      OTEL_SERVICE_NAME: "configserver"
 
   eurekaserver:
     image: "albertoesteva88/eurekaserver:s11"
@@ -34,13 +277,14 @@ services:
       test: "curl --fail --silent localhost:8070/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 5
+      start_period: 100s
     extends:
       file: common-config.yml
       service: microservice-configserver-config
     environment:
       SPRING_APPLICATION_NAME: "eurekaserver"
+      OTEL_SERVICE_NAME: "eurekaserver"
       
   accounts:
     image: "albertoesteva88/accounts:s11"
@@ -51,10 +295,11 @@ services:
       test: "curl --fail --silent localhost:8080/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 10s      
+      retries: 5
+      start_period: 60s
     environment:
       SPRING_APPLICATION_NAME: "accounts"
+      OTEL_SERVICE_NAME: "accounts"
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config
@@ -68,13 +313,17 @@ services:
       test: "curl --fail --silent localhost:8090/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 10s      
+      retries: 5
+      start_period: 60s
     environment:
       SPRING_APPLICATION_NAME: "loans"
+      OTEL_SERVICE_NAME: "loans"
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config
+    depends_on:
+      accounts:
+        condition: service_healthy
 
   cards:
     image: "albertoesteva88/cards:s11"
@@ -85,13 +334,17 @@ services:
       test: "curl --fail --silent localhost:9000/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 10s      
+      retries: 5
+      start_period: 60s
     environment:
       SPRING_APPLICATION_NAME: "cards"
+      OTEL_SERVICE_NAME: "cards"
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config
+    depends_on:
+      loans:
+        condition: service_healthy
 
   gatewayserver:
     image: "albertoesteva88/gatewayserver:s11"
@@ -105,14 +358,15 @@ services:
         condition: service_healthy
       cards:
         condition: service_healthy
-      redis:
-        condition: service_healthy        
+      # redis:
+      #   condition: service_healthy        
     environment:
       SPRING_APPLICATION_NAME: "gatewayserver"
-      SPRING_DATA_REDIS_CONNECT-TIMEOUT: 2s
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      SPRING_DATA_REDIS_TIMEOUT: 1s      
+      OTEL_SERVICE_NAME: "gatewayserver"
+      # SPRING_DATA_REDIS_CONNECT-TIMEOUT: 2s
+      # SPRING_DATA_REDIS_HOST: redis
+      # SPRING_DATA_REDIS_PORT: 6379
+      # SPRING_DATA_REDIS_TIMEOUT: 1s      
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config      

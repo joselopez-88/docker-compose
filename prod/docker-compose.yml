@@ -120,7 +120,7 @@ services:
     extends:
       file: common-config.yml
       service: network-deploy-service
-      
+
 #  Plataforma de visualización y dashboards que permite explorar los logs almacenados en Loki y las métricas de Prometheus.
 # Usa el comando -target=server para especializarse en operaciones de servidor
   grafana:
@@ -260,8 +260,8 @@ services:
       test: "curl --fail --silent localhost:8071/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 5
+      start_period: 60s
     extends:
       file: common-config.yml
       service: microservice-base-config
@@ -277,8 +277,8 @@ services:
       test: "curl --fail --silent localhost:8070/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 5
+      start_period: 100s
     extends:
       file: common-config.yml
       service: microservice-configserver-config
@@ -295,8 +295,8 @@ services:
       test: "curl --fail --silent localhost:8080/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 20s      
+      retries: 5
+      start_period: 60s
     environment:
       SPRING_APPLICATION_NAME: "accounts"
       OTEL_SERVICE_NAME: "accounts"
@@ -313,14 +313,17 @@ services:
       test: "curl --fail --silent localhost:8090/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 20s      
+      retries: 5
+      start_period: 60s
     environment:
       SPRING_APPLICATION_NAME: "loans"
       OTEL_SERVICE_NAME: "loans"
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config
+    depends_on:
+      accounts:
+        condition: service_healthy
 
   cards:
     image: "albertoesteva88/cards:s11"
@@ -331,14 +334,17 @@ services:
       test: "curl --fail --silent localhost:9000/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 20s      
+      retries: 5
+      start_period: 60s
     environment:
       SPRING_APPLICATION_NAME: "cards"
       OTEL_SERVICE_NAME: "cards"
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config
+    depends_on:
+      loans:
+        condition: service_healthy
 
   gatewayserver:
     image: "albertoesteva88/gatewayserver:s11"
