@@ -1,4 +1,40 @@
 services:
+
+  keycloak-db:
+    image: albertoesteva88/postgres:15-mx
+    container_name: keycloak-db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_pwd
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    extends:
+      file: common-config.yml
+      service: network-deploy-service
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.3
+    container_name: keycloak
+    command: start
+    ports:
+      - "7080:8080"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_pwd
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 7080
+    depends_on:
+      - keycloak-db
+    extends:
+      file: common-config.yml
+      service: network-deploy-service      
 # Servicios para Observabilidad
 #  Este contenedor se encarga de manejar las consultas de lectura (queries) sobre los logs almacenados en Loki.
 # Utiliza el comando -target=read para especializarse en operaciones de consulta.
@@ -261,7 +297,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 60s
+      start_period: 80s
     extends:
       file: common-config.yml
       service: microservice-base-config
@@ -278,7 +314,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 100s
+      start_period: 80s
     extends:
       file: common-config.yml
       service: microservice-configserver-config
@@ -286,29 +322,12 @@ services:
       SPRING_APPLICATION_NAME: "eurekaserver"
       OTEL_SERVICE_NAME: "eurekaserver"
       
-  accounts:
-    image: "albertoesteva88/accounts:s12"
-    container_name: accounts-ms
-    ports:
-      - "8080:8080"
-    healthcheck:
-      test: "curl --fail --silent localhost:8080/actuator/health/readiness | grep UP || exit 1"
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
-    environment:
-      SPRING_APPLICATION_NAME: "accounts"
-      OTEL_SERVICE_NAME: "accounts"
-    extends:
-      file: common-config.yml
-      service: microservice-eurekaserver-config
 
   loans:
     image: "albertoesteva88/loans:s12"
     container_name: loans-ms
-    ports:
-      - "8090:8090"
+    # ports:
+    #   - "8090:8090"
     healthcheck:
       test: "curl --fail --silent localhost:8090/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
@@ -321,21 +340,18 @@ services:
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config
-    depends_on:
-      accounts:
-        condition: service_healthy
 
   cards:
     image: "albertoesteva88/cards:s12"
     container_name: cards-ms
-    ports:
-      - "9000:9000"
+    # ports:
+    #   - "9000:9000"
     healthcheck:
       test: "curl --fail --silent localhost:9000/actuator/health/readiness | grep UP || exit 1"
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 60s
+      start_period: 80s
     environment:
       SPRING_APPLICATION_NAME: "cards"
       OTEL_SERVICE_NAME: "cards"
@@ -345,6 +361,28 @@ services:
     depends_on:
       loans:
         condition: service_healthy
+  accounts:
+    image: "albertoesteva88/accounts:s12"
+    container_name: accounts-ms
+    # ports:
+    #   - "8080:8080"
+    healthcheck:
+      test: "curl --fail --silent localhost:8080/actuator/health/readiness | grep UP || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 80s
+    environment:
+      SPRING_APPLICATION_NAME: "accounts"
+      OTEL_SERVICE_NAME: "accounts"
+    extends:
+      file: common-config.yml
+      service: microservice-eurekaserver-config
+    depends_on:
+      loans:
+        condition: service_healthy
+      cards:
+        condition: service_healthy
 
   gatewayserver:
     image: "albertoesteva88/gatewayserver:s12"
@@ -352,17 +390,19 @@ services:
     ports:
       - "8072:8072"
     depends_on:
-      accounts:
-        condition: service_healthy
       loans:
         condition: service_healthy
       cards:
+        condition: service_healthy
+      accounts:
         condition: service_healthy
       # redis:
       #   condition: service_healthy        
     environment:
       SPRING_APPLICATION_NAME: "gatewayserver"
       OTEL_SERVICE_NAME: "gatewayserver"
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: "http://keycloak:8080/realms/master/protocol/openid-connect/certs"
+      
       # SPRING_DATA_REDIS_CONNECT-TIMEOUT: 2s
       # SPRING_DATA_REDIS_HOST: redis
       # SPRING_DATA_REDIS_PORT: 6379
@@ -370,6 +410,9 @@ services:
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config      
+volumes:
+  postgres_data:
+    external: true
 
 networks:
   eazybank:
