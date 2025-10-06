@@ -288,7 +288,7 @@ services:
   #     service: network-deploy-service
   
   configserver:
-    image: "albertoesteva88/configserver:s12"
+    image: "albertoesteva88/configserver:s13"
     container_name: configserver-ms
     ports:
       - "8071:8071"
@@ -305,7 +305,7 @@ services:
       OTEL_SERVICE_NAME: "configserver"
 
   eurekaserver:
-    image: "albertoesteva88/eurekaserver:s12"
+    image: "albertoesteva88/eurekaserver:s13"
     container_name: eurekaserver-ms
     ports:
       - "8070:8070"
@@ -324,7 +324,7 @@ services:
       
 
   loans:
-    image: "albertoesteva88/loans:s12"
+    image: "albertoesteva88/loans:s13"
     container_name: loans-ms
     # ports:
     #   - "8090:8090"
@@ -342,7 +342,7 @@ services:
       service: microservice-eurekaserver-config
 
   cards:
-    image: "albertoesteva88/cards:s12"
+    image: "albertoesteva88/cards:s13"
     container_name: cards-ms
     # ports:
     #   - "9000:9000"
@@ -362,7 +362,7 @@ services:
       loans:
         condition: service_healthy
   accounts:
-    image: "albertoesteva88/accounts:s12"
+    image: "albertoesteva88/accounts:s13"
     container_name: accounts-ms
     # ports:
     #   - "8080:8080"
@@ -385,7 +385,7 @@ services:
         condition: service_healthy
 
   gatewayserver:
-    image: "albertoesteva88/gatewayserver:s12"
+    image: "albertoesteva88/gatewayserver:s13"
     container_name: gatewayserver-ms
     ports:
       - "8072:8072"
