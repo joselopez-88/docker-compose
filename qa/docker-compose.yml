@@ -1,5 +1,19 @@
 services:
-
+  rabbit:
+    image: rabbitmq:3.13-management
+    hostname: rabbit
+    container_name: rabbit
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    extends:
+      file: common-config.yml
+      service: network-deploy-service
   keycloak-db:
     image: albertoesteva88/postgres:15-mx
     container_name: keycloak-db
@@ -375,6 +389,7 @@ services:
     environment:
       SPRING_APPLICATION_NAME: "accounts"
       OTEL_SERVICE_NAME: "accounts"
+      SPRING_RABBITMQ_HOST: "rabbit"
     extends:
       file: common-config.yml
       service: microservice-eurekaserver-config
@@ -383,6 +398,20 @@ services:
         condition: service_healthy
       cards:
         condition: service_healthy
+      rabbit:
+        condition: service_healthy
+
+  message:
+    image: "albertoesteva88/message:s13"
+    container_name: message-ms
+    depends_on:
+      rabbit:
+        condition: service_healthy
+    environment:
+      SPRING_RABBITMQ_HOST: "rabbit"
+    extends:
+      file: common-config.yml
+      service: network-deploy-service
 
   gatewayserver:
     image: "albertoesteva88/gatewayserver:s13"
