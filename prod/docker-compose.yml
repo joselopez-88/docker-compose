@@ -432,7 +432,7 @@ services:
     environment:
       SPRING_CLOUD_STREAM_KAFKA_BINDER_BROKERS: "kafka:9092"
     healthcheck:
-        test: "curl --fail --silent localhost:8080/actuator/health/readiness | grep UP || exit 1"
+        test: "curl --fail --silent localhost:9010/actuator/health/readiness | grep UP || exit 1"
         interval: 20s
         timeout: 10s
         retries: 5
